@@ -152,6 +152,7 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
 
     /**
      * Check whether the registry config is exists, and then conversion it to {@link RegistryConfig}
+     * 校验 RegistryConfig 配置。实际上，该方法会初始化 RegistryConfig 的配置属性。
      */
     protected void checkRegistry() {
         loadRegistriesFromBackwardConfig();
@@ -169,6 +170,10 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
     }
 
     @SuppressWarnings("deprecation")
+    /**
+     * 校验 ApplicationConfig 配置。
+     * 实际上，该方法会初始化 ApplicationConfig 的配置属性。
+     */
     protected void checkApplication() {
         // for backward compatibility
         createApplicationIfAbsent();
@@ -181,6 +186,7 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
         ApplicationModel.setApplication(application.getName());
 
         // backward compatibility
+        // 初始化优雅停机的超时时长，参见 http://dubbo.io/books/dubbo-user-book/demos/graceful-shutdown.html 文档。
         String wait = ConfigUtils.getProperty(Constants.SHUTDOWN_WAIT_KEY);
         if (wait != null && wait.trim().length() > 0) {
             System.setProperty(Constants.SHUTDOWN_WAIT_KEY, wait.trim());
@@ -397,6 +403,10 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
      *
      * @param interfaceClass the interface of remote service
      * @param methods the methods configured
+     *
+     * 校验接口和方法
+     *  1. 接口类非空，并是接口
+     *  2. 方法在接口中已定义
      */
     protected void checkInterfaceAndMethods(Class<?> interfaceClass, List<MethodConfig> methods) {
         // interface cannot be null
