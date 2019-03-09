@@ -42,15 +42,18 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
+ * ⭐️⭐️⭐️⭐️⭐️⭐️⭐️⭐️⭐️⭐️⭐️⭐️
  * Utility methods and public methods for parsing configuration
- *
- * @export
+ * 主要提供配置解析与校验相关的工具方法
+ * 抽象配置类，除了 ArgumentConfig ，所有的配置类都继承该类
  */
 public abstract class AbstractConfig implements Serializable {
 
     protected static final Logger logger = LoggerFactory.getLogger(AbstractConfig.class);
     private static final long serialVersionUID = 4267533505537413570L;
 
+
+    // ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 属性值的格式校验，参见本类的 `#checkXXX` 方法 BEGIN ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
     /**
      * The maximum length of a <b>parameter's value</b>
      */
@@ -91,13 +94,21 @@ public abstract class AbstractConfig implements Serializable {
      */
     private static final Pattern PATTERN_KEY = Pattern.compile("[*,\\-._0-9a-zA-Z]+");
 
+  // ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 属性值的格式校验，参见本类的 `#checkXXX` 方法 end ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐
+
     /**
      * The legacy properties container
+     * 新老版本的 properties 的 key 映射
+     *
+     * key：新版本的配置 映射
+     * value：旧版本的配置 映射
      */
     private static final Map<String, String> legacyProperties = new HashMap<String, String>();
 
     /**
      * The suffix container
+     * 配置类名的后缀
+     * 例如，ServiceConfig 后缀为 Config；ServiceBean 后缀为 Bean
      */
     private static final String[] SUFFIXES = new String[]{"Config", "Bean"};
 
@@ -117,6 +128,9 @@ public abstract class AbstractConfig implements Serializable {
 
     /**
      * The config id
+     * 配置对象的编号，适用于除了 API 配置之外的三种配置方式，标记一个配置对象，可用于对象之间的引用。
+     * 例如 XML 的 <dubbo:service provider="${PROVIDER_ID}"> ，其中 provider 为 <dubbo:provider> 的 ID 属性。
+     * 为什么说不适用 API 配置呢？直接 #setXXX(config) 对象即可。
      */
     protected String id;
     protected String prefix;
@@ -132,6 +146,12 @@ public abstract class AbstractConfig implements Serializable {
         return value;
     }
 
+  /**
+   * 获取类名对应的属性标签，例如，ServiceConfig 对应为 service 。
+   *
+   * @param cls 类名
+   * @return 标签
+   */
     private static String getTagName(Class<?> cls) {
         String tag = cls.getSimpleName();
         for (String suffix : SUFFIXES) {
@@ -148,6 +168,13 @@ public abstract class AbstractConfig implements Serializable {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * 将配置对象的属性，添加到参数集合
+     *
+     * @param parameters 参数集合
+     * @param config 配置对象
+     * @param prefix 属性前缀
+     */
     protected static void appendParameters(Map<String, String> parameters, Object config, String prefix) {
         if (config == null) {
             return;
@@ -161,18 +188,22 @@ public abstract class AbstractConfig implements Serializable {
                     if (method.getReturnType() == Object.class || parameter != null && parameter.excluded()) {
                         continue;
                     }
+                    //获得属性名
                     String key;
                     if (parameter != null && parameter.key().length() > 0) {
                         key = parameter.key();
                     } else {
                         key = calculatePropertyFromGetter(name);
                     }
+                    // 获得属性值
                     Object value = method.invoke(config);
                     String str = String.valueOf(value).trim();
                     if (value != null && str.length() > 0) {
+                        // 转义
                         if (parameter != null && parameter.escaped()) {
                             str = URL.encode(str);
                         }
+                        // 拼接
                         if (parameter != null && parameter.append()) {
                             String pre = parameters.get(Constants.DEFAULT_KEY + "." + key);
                             if (pre != null && pre.length() > 0) {
@@ -193,7 +224,7 @@ public abstract class AbstractConfig implements Serializable {
                 } else if ("getParameters".equals(name)
                         && Modifier.isPublic(method.getModifiers())
                         && method.getParameterTypes().length == 0
-                        && method.getReturnType() == Map.class) {
+                        && method.getReturnType() == Map.class) {   // `#getParameters()` 方法
                     Map<String, String> map = (Map<String, String>) method.invoke(config, new Object[0]);
                     if (map != null && map.size() > 0) {
                         String pre = (prefix != null && prefix.length() > 0 ? prefix + "." : "");
