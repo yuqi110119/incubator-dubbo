@@ -434,7 +434,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         }
 
         // 将 `side`，`dubbo`，`timestamp`，`pid` 参数，添加到 `map` 集合中。
-        Map<String, String> map = new HashMap<String, String>();
+        Map<String, String> map = new HashMap<String, String>();  //用于下面创建 Dubbo URL 的 parameters 属性。
         map.put(Constants.SIDE_KEY, Constants.PROVIDER_SIDE);
         appendRuntimeParameters(map);
         // 将各种配置对象，添加到 `map` 集合中。
@@ -533,8 +533,9 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
             contextPath = provider.getContextpath();
         }
 
-        String host = this.findConfigedHosts(protocolConfig, registryURLs, map);
+        String host = this.findConfigedHosts(protocolConfig, registryURLs, map);  //获得注册到注册中心的服务提供者 Host
         Integer port = this.findConfigedPorts(protocolConfig, name, map);
+        //构建URL
         URL url = new URL(name, host, port, (StringUtils.isEmpty(contextPath) ? "" : contextPath + "/") + path, map);
 
         // 配置规则，参见《配置规则》http://dubbo.apache.org/zh-cn/docs/user/demos/config-rule.html

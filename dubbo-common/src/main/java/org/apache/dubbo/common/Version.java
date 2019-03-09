@@ -141,6 +141,7 @@ public final class Version {
         return "";
     }
 
+    //获取版本号
     public static String getVersion(Class<?> cls, String defaultVersion) {
         try {
             // find version info from MANIFEST.MF first
