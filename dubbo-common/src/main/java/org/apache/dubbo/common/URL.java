@@ -70,6 +70,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @see java.net.URL
  * @see java.net.URI
+ *
+ *
+ * 所有配置最终都将转换为 Dubbo URL 表示，并由服务提供方生成，经注册中心传递给消费方。
+ * 一个 Service 注册到注册中心的格式如下：
+ * dubbo://192.168.3.17:20880/com.alibaba.dubbo.demo.DemoService?anyhost=true&application=demo-provider&default.delay=-1&default.retries=0&default.service.filter=demoFilter&delay=-1&dubbo=2.0.0&generic=false&interface=com.alibaba.dubbo.demo.DemoService&methods=sayHello&pid=19031&side=provider&timestamp=1519651641799
  */
 public /*final**/
 class URL implements Serializable {
@@ -90,6 +95,11 @@ class URL implements Serializable {
 
     private final String path;
 
+    /**
+     * 参数集合。 URL 作为一个通用模型，贯穿整个 RPC 流程
+     * URL 里面的 key=value ，实际上就是 Service 对应的配置项。
+     * 该属性，通过  AbstractConfig#appendParameters(parameters, config, prefix) 方法生成。
+     */
     private final Map<String, String> parameters;
 
     // ==== cache ====
@@ -1240,6 +1250,15 @@ class URL implements Serializable {
         return buildString(appendUser, appendParameter, false, false, parameters);
     }
 
+    /**
+     * 生成格式为格式为 protocol://username:password@host:port/path?key=value&key=value
+     * @param appendUser
+     * @param appendParameter
+     * @param useIP
+     * @param useService
+     * @param parameters
+     * @return
+     */
     private String buildString(boolean appendUser, boolean appendParameter, boolean useIP, boolean useService, String... parameters) {
         StringBuilder buf = new StringBuilder();
         if (StringUtils.isNotEmpty(protocol)) {
