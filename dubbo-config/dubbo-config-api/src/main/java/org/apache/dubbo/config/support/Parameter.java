@@ -58,15 +58,15 @@ public @interface Parameter {
     boolean attribute() default false;
 
     /**
-     * 是否拼接默认属性，参见 {@link com.alibaba.dubbo.config.AbstractConfig.appendParameters(Map, Object, String)} 方法。
+     * 是否拼接默认属性，参见  com.alibaba.dubbo.config.AbstractConfig.appendParameters(Map, Object, String)} 方法。
      *
      * 我们来看看 `#append() = true` 的属性，有如下四个：
-     *   + {@link AbstractInterfaceConfig#getFilter()}
-     *   + {@link AbstractInterfaceConfig#getListener()}
-     *   + {@link AbstractReferenceConfig#getFilter()}
-     *   + {@link AbstractReferenceConfig#getListener()}
-     *   + {@link AbstractServiceConfig#getFilter()}
-     *   + {@link AbstractServiceConfig#getListener()}
+     *   +  AbstractInterfaceConfig#getFilter()}
+     *   +  AbstractInterfaceConfig#getListener()}
+     *   +  AbstractReferenceConfig#getFilter()}
+     *   +  AbstractReferenceConfig#getListener()}
+     *   +  AbstractServiceConfig#getFilter()}
+     *   +  AbstractServiceConfig#getListener()}
      * 那么，以 AbstractServiceConfig 举例子。
      *
      * 我们知道 ProviderConfig 和 ServiceConfig 继承 AbstractServiceConfig 类，那么 `filter` , `listener` 对应的相同的键。
