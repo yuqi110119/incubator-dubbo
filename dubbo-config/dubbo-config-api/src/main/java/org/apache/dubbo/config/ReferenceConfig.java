@@ -223,7 +223,13 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         checkApplication();
         checkMetadataReport();
     }
+    /**
+     * 1. 进一步初始化 ReferenceConfig 对象。
+     * 2. 校验 ReferenceConfig 对象的配置项。
+     * 3. 使用 ReferenceConfig 对象，生成 Dubbo URL 对象数组。
+     * 4. 使用 Dubbo URL 对象，应用服务。
 
+     */
     public synchronized T get() {
         checkAndUpdateSubConfigs();
 
@@ -252,6 +258,7 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
         invoker = null;
         ref = null;
     }
+
 
     private void init() {
         if (initialized) {
