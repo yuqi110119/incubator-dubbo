@@ -30,6 +30,8 @@ public interface ExporterListener {
      * @param exporter
      * @throws RpcException
      * @see org.apache.dubbo.rpc.Protocol#export(Invoker)
+     *
+     * 当服务暴露完成
      */
     void exported(Exporter<?> exporter) throws RpcException;
 
@@ -39,6 +41,8 @@ public interface ExporterListener {
      * @param exporter
      * @throws RpcException
      * @see org.apache.dubbo.rpc.Exporter#unexport()
+     *
+     * 当服务取消暴露完成
      */
     void unexported(Exporter<?> exporter);
 
