@@ -38,6 +38,9 @@ public class InjvmProtocol extends AbstractProtocol implements Protocol {
     public static final String NAME = Constants.LOCAL_PROTOCOL;
 
     public static final int DEFAULT_PORT = 0;
+    /**
+     * 单例。在 Dubbo SPI 中，被初始化，有且仅有一次。
+     */
     private static InjvmProtocol INSTANCE;
 
     public InjvmProtocol() {
@@ -95,19 +98,25 @@ public class InjvmProtocol extends AbstractProtocol implements Protocol {
     public boolean isInjvmRefer(URL url) {
         String scope = url.getParameter(Constants.SCOPE_KEY);
         // Since injvm protocol is configured explicitly, we don't need to set any extra flag, use normal refer process.
+        // 当 `scope = local` 或者 `injvm = true` 时，本地引用
         if (Constants.SCOPE_LOCAL.equals(scope) || (url.getParameter(Constants.LOCAL_PROTOCOL, false))) {
             // if it's declared as local reference
             // 'scope=local' is equivalent to 'injvm=true', injvm will be deprecated in the future release
             return true;
+        // 当 `scope = remote` 时，远程引用
         } else if (Constants.SCOPE_REMOTE.equals(scope)) {
             // it's declared as remote reference
             return false;
+        // 当 `generic = true` 时，即使用泛化调用，远程引用。
         } else if (url.getParameter(Constants.GENERIC_KEY, false)) {
             // generic invocation is not local reference
             return false;
+        // 当本地已经有该 Exporter 时，本地引用
+        // 判断当本地已经有 url 对应的 InjvmExporter 时，直接引用。🙂 本地已有的服务，不必要使用远程服务，减少网络开销，提升性能。
         } else if (getExporter(exporterMap, url) != null) {
             // by default, go through local reference if there's the service exposed locally
             return true;
+        // 默认，远程引用
         } else {
             return false;
         }

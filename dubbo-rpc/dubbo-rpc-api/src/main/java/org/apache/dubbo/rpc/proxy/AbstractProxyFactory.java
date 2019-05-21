@@ -27,6 +27,10 @@ import com.alibaba.dubbo.rpc.service.EchoService;
 
 /**
  * AbstractProxyFactory
+ * 实现 ProxyFactory 接口，代理工厂抽象类
+ *
+ * provider的实现类会被封装成为一个 AbstractProxyInvoker 实例，并新生成一个 Exporter 实例。
+ * 这样当网络通讯层收到一个请求后，会找到对应的 Exporter 实例，并调用它所对应的 AbstractProxyInvoker 实例，从而真正调用了服务提供者的代码
  */
 public abstract class AbstractProxyFactory implements ProxyFactory {
 
@@ -51,6 +55,8 @@ public abstract class AbstractProxyFactory implements ProxyFactory {
                 }
             }
         }
+        // 增加 EchoService 接口，用于回生测试。
+        // 参见文档《回声测试》http://dubbo.apache.org/zh-cn/docs/user/demos/echo-service.html
         if (interfaces == null) {
             interfaces = new Class<?>[]{invoker.getInterface(), EchoService.class};
         }

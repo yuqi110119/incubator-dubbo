@@ -31,17 +31,27 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * dubbo protocol support class.
+ * 实现 ExchangeClient 接口，支持指向计数的信息交换客户端实现类
+ *
+ * 基于装饰器模式，所以，每个实现方法，都是调用 client 的对应的方法。
  */
 @SuppressWarnings("deprecation")
 final class ReferenceCountExchangeClient implements ExchangeClient {
 
     private final URL url;
+    /**
+     * 指向数量
+     */
     private final AtomicInteger referenceCount = new AtomicInteger(0);
 
+    /**
+     * 客户端
+     */
     private ExchangeClient client;
 
     public ReferenceCountExchangeClient(ExchangeClient client) {
         this.client = client;
+        // 指向加一
         referenceCount.incrementAndGet();
         this.url = client.getUrl();
     }
@@ -141,7 +151,9 @@ final class ReferenceCountExchangeClient implements ExchangeClient {
 
     @Override
     public void close(int timeout) {
+        // 若无指向，进行真正的关闭。
         if (referenceCount.decrementAndGet() <= 0) {
+            // 关闭 `client`
             if (timeout == 0) {
                 client.close();
 
@@ -149,6 +161,7 @@ final class ReferenceCountExchangeClient implements ExchangeClient {
                 client.close(timeout);
             }
 
+            // 替换 `client` 为 LazyConnectExchangeClient 对象
             replaceWithLazyClient();
         }
     }
@@ -167,12 +180,12 @@ final class ReferenceCountExchangeClient implements ExchangeClient {
     private void replaceWithLazyClient() {
         // this is a defensive operation to avoid client is closed by accident, the initial state of the client is false
         URL lazyUrl = URLBuilder.from(url)
-                .addParameter(Constants.LAZY_CONNECT_INITIAL_STATE_KEY, Boolean.FALSE)
+                .addParameter(Constants.LAZY_CONNECT_INITIAL_STATE_KEY, Boolean.FALSE)  // 不重连
                 .addParameter(Constants.RECONNECT_KEY, Boolean.FALSE)
                 .addParameter(Constants.SEND_RECONNECT_KEY, Boolean.TRUE.toString())
                 .addParameter("warning", Boolean.TRUE.toString())
                 .addParameter(LazyConnectExchangeClient.REQUEST_WITH_WARNING_KEY, true)
-                .addParameter("_client_memo", "referencecounthandler.replacewithlazyclient")
+                .addParameter("_client_memo", "referencecounthandler.replacewithlazyclient")  // 备注
                 .build();
 
         /**

@@ -44,14 +44,28 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class DubboInvoker<T> extends AbstractInvoker<T> {
 
+    /**
+     * 远程通信客户端数组
+     */
     private final ExchangeClient[] clients;
 
+    /**
+     * 使用的 {@link #clients} 的位置
+     */
     private final AtomicPositiveInteger index = new AtomicPositiveInteger();
 
     private final String version;
 
+    /**
+     * 销毁锁
+     *
+     * 在 {@link #destroy()} 中使用
+     */
     private final ReentrantLock destroyLock = new ReentrantLock();
 
+    /**
+     * Invoker 集合，从 {@link DubboProtocol#invokers} 获取
+     */
     private final Set<Invoker<?>> invokers;
 
     public DubboInvoker(Class<T> serviceType, URL url, ExchangeClient[] clients) {
@@ -69,29 +83,44 @@ public class DubboInvoker<T> extends AbstractInvoker<T> {
     @Override
     protected Result doInvoke(final Invocation invocation) throws Throwable {
         RpcInvocation inv = (RpcInvocation) invocation;
+        // 获得方法名
         final String methodName = RpcUtils.getMethodName(invocation);
+        // 获得 `path`( 服务名 )，`version`
         inv.setAttachment(Constants.PATH_KEY, getUrl().getPath());
         inv.setAttachment(Constants.VERSION_KEY, version);
 
+        // 获得 ExchangeClient 对象
         ExchangeClient currentClient;
         if (clients.length == 1) {
+            // 从 clients 数组中获取 ExchangeClient
             currentClient = clients[0];
         } else {
             currentClient = clients[index.getAndIncrement() % clients.length];
         }
+        // 远程调用
         try {
+            // 获取异步配置
             boolean isAsync = RpcUtils.isAsync(getUrl(), invocation);
             boolean isAsyncFuture = RpcUtils.isReturnTypeFuture(inv);
+            // isOneway 为 true，表示“单向”通信
             boolean isOneway = RpcUtils.isOneway(getUrl(), invocation);
+            // 获得超时时间
             int timeout = getUrl().getMethodParameter(methodName, Constants.TIMEOUT_KEY, Constants.DEFAULT_TIMEOUT);
+            // 单向调用  异步无返回值
             if (isOneway) {
                 boolean isSent = getUrl().getMethodParameter(methodName, Constants.SENT_KEY, false);
+                // 发送请求   注意，调用的是 ExchangeClient#send(invocation, sent) 方法，发送消息，而不是请求。
                 currentClient.send(inv, isSent);
+                // 设置上下文中的 future 字段为 null
                 RpcContext.getContext().setFuture(null);
+                // 返回一个空的 RpcResult
                 return new RpcResult();
+            // 异步调用  异步有返回值
             } else if (isAsync) {
+                // 发送请求，并得到一个 ResponseFuture 实例
                 ResponseFuture future = currentClient.request(inv, timeout);
                 // For compatibility
+                // 设置 future 到上下文中
                 FutureAdapter<Object> futureAdapter = new FutureAdapter<>(future);
                 RpcContext.getContext().setFuture(futureAdapter);
 
@@ -103,8 +132,10 @@ public class DubboInvoker<T> extends AbstractInvoker<T> {
                     result = new SimpleAsyncRpcResult(futureAdapter, futureAdapter.getResultFuture(), false);
                 }
                 return result;
+            // 同步调用
             } else {
                 RpcContext.getContext().setFuture(null);
+                // 发送请求，得到一个 ResponseFuture 实例，并调用该实例的 get 方法进行等待
                 return (Result) currentClient.request(inv, timeout).get();
             }
         } catch (TimeoutException e) {

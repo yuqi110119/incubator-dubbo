@@ -26,8 +26,17 @@ import org.apache.dubbo.common.extension.ExtensionLoader;
 @Adaptive
 public class AdaptiveCompiler implements Compiler {
 
+    /**
+     * 默认编辑器的拓展名
+     */
     private static volatile String DEFAULT_COMPILER;
 
+    /**
+     * 静态方法，设置默认编辑器的拓展名( DEFAULT_COMPILER )。
+     * 该方法被 ApplicationConfig#setCompiler(compiler) 方法调用。
+     * 在 <dubbo:application compiler="" /> 配置下，可触发该方法。
+     * @param compiler
+     */
     public static void setDefaultCompiler(String compiler) {
         DEFAULT_COMPILER = compiler;
     }
@@ -35,10 +44,13 @@ public class AdaptiveCompiler implements Compiler {
     @Override
     public Class<?> compile(String code, ClassLoader classLoader) {
         Compiler compiler;
+        // 获得 Compiler 的 ExtensionLoader 对象。
         ExtensionLoader<Compiler> loader = ExtensionLoader.getExtensionLoader(Compiler.class);
         String name = DEFAULT_COMPILER; // copy reference
+        // 使用设置的拓展名，获得 Compiler 拓展对象
         if (name != null && name.length() > 0) {
             compiler = loader.getExtension(name);
+        // 获得默认的 Compiler 拓展对象
         } else {
             compiler = loader.getDefaultExtension();
         }

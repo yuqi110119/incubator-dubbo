@@ -38,20 +38,36 @@ import java.io.OutputStream;
 import java.lang.reflect.Type;
 import java.util.Map;
 
+/**
+ * 可解码的 RpcResult 实现类。
+ * 当服务提供者，返回服务消费者调用结果，前者编码的 RpcResult 对象，后者解码成 DecodeableRpcResult 对象。
+ */
 public class DecodeableRpcResult extends RpcResult implements Codec, Decodeable {
 
     private static final Logger log = LoggerFactory.getLogger(DecodeableRpcResult.class);
-
+    /**
+     * 通道
+     */
     private Channel channel;
-
+    /**
+     * Serialization 类型编号
+     */
     private byte serializationType;
-
+    /**
+     * 输入流
+     */
     private InputStream inputStream;
-
+    /**
+     * 返回
+     */
     private Response response;
-
+    /**
+     * Invocation 对象
+     */
     private Invocation invocation;
-
+    /**
+     * 是否已经解码完成
+     */
     private volatile boolean hasDecoded;
 
     public DecodeableRpcResult(Channel channel, Response response, InputStream is, Invocation invocation, byte id) {
@@ -72,17 +88,17 @@ public class DecodeableRpcResult extends RpcResult implements Codec, Decodeable 
 
     @Override
     public Object decode(Channel channel, InputStream input) throws IOException {
-        ObjectInput in = CodecSupport.getSerialization(channel.getUrl(), serializationType)
-                .deserialize(channel.getUrl(), input);
+        ObjectInput in = CodecSupport.getSerialization(channel.getUrl(), serializationType).deserialize(channel.getUrl(), input);
 
+        // 读取标记位
         byte flag = in.readByte();
         switch (flag) {
-            case DubboCodec.RESPONSE_NULL_VALUE:
+            case DubboCodec.RESPONSE_NULL_VALUE:  // 无返回值
                 break;
-            case DubboCodec.RESPONSE_VALUE:
+            case DubboCodec.RESPONSE_VALUE:  // 有返回值
                 handleValue(in);
                 break;
-            case DubboCodec.RESPONSE_WITH_EXCEPTION:
+            case DubboCodec.RESPONSE_WITH_EXCEPTION:  // 异常
                 handleException(in);
                 break;
             case DubboCodec.RESPONSE_NULL_VALUE_WITH_ATTACHMENTS:
@@ -130,7 +146,7 @@ public class DecodeableRpcResult extends RpcResult implements Codec, Decodeable 
                 value = in.readObject();
             } else if (returnTypes.length == 1) {
                 value = in.readObject((Class<?>) returnTypes[0]);
-            } else {
+            } else {   // 返回结果:Type[]{method.getReturnType(), method.getGenericReturnType()}
                 value = in.readObject((Class<?>) returnTypes[0], returnTypes[1]);
             }
             setValue(value);

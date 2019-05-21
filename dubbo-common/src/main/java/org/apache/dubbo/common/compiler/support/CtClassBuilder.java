@@ -139,13 +139,20 @@ public class CtClassBuilder {
      * build CtClass object
      */
     public CtClass build(ClassLoader classLoader) throws NotFoundException, CannotCompileException {
+        // 创建 ClassPool 对象
+        // ClassPool 是一个 CtClass 对象的 hash 表，类名做为 key 。
+        // ClassPool 的 #get(key) 搜索 hash 表找到与指定 key 关联的 CtClass 对象。
+        // 如果没有找到 CtClass 对象，#get(key) 读一个类文件构建新的 CtClass 对象，它是被记录在 hash 表中然后返回这个对象。
         ClassPool pool = new ClassPool(true);
+        // 设置类搜索路径
         pool.appendClassPath(new LoaderClassPath(classLoader));
         
         // create class
+        // 创建类
         CtClass ctClass = pool.makeClass(className, pool.get(superClassName));
 
         // add imported packages
+        // 引用包
         imports.stream().forEach(pool::importPackage);
 
         // add implemented interfaces

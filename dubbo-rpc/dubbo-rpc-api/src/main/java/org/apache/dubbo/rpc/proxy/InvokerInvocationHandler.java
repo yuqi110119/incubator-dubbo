@@ -28,9 +28,14 @@ import java.lang.reflect.Method;
 
 /**
  * InvokerHandler
+ *
+ * 通过 InvokerInvocationHandler ，可以实现 Proxy 和真正的逻辑解耦
  */
 public class InvokerInvocationHandler implements InvocationHandler {
     private static final Logger logger = LoggerFactory.getLogger(InvokerInvocationHandler.class);
+    /**
+     * Invoker 对象
+     */
     private final Invoker<?> invoker;
 
     public InvokerInvocationHandler(Invoker<?> handler) {
@@ -41,9 +46,11 @@ public class InvokerInvocationHandler implements InvocationHandler {
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         String methodName = method.getName();
         Class<?>[] parameterTypes = method.getParameterTypes();
+        // wait 等方法，直接反射调用
         if (method.getDeclaringClass() == Object.class) {
             return method.invoke(invoker, args);
         }
+        // 基础方法，不使用 RPC 调用
         if ("toString".equals(methodName) && parameterTypes.length == 0) {
             return invoker.toString();
         }
@@ -54,6 +61,7 @@ public class InvokerInvocationHandler implements InvocationHandler {
             return invoker.equals(args[0]);
         }
 
+        // 核心逻辑是调用 Invoker#invoke(invocation) 方法，进行 RPC 调用。
         return invoker.invoke(createInvocation(method, args)).recreate();
     }
 

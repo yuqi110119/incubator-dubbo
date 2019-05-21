@@ -111,6 +111,14 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
 
     /**
      * The exported services
+     *
+     * 服务配置暴露的 Exporter 。
+     * URL ：Exporter 不一定是 1：1 的关系。
+     * 例如 {@link #scope} 未设置时，会暴露 Local + Remote 两个，也就是 URL ：Exporter = 1：2
+     *      {@link #scope} 设置为空时，不会暴露，也就是 URL ：Exporter = 1：0
+     *      {@link #scope} 设置为 Local 或 Remote 任一时，会暴露 Local 或 Remote 一个，也就是 URL ：Exporter = 1：1
+     *
+     * 非配置。
      */
     private final List<Exporter<?>> exporters = new ArrayList<Exporter<?>>();
 
@@ -420,13 +428,27 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
+    /**
+     * 暴露 Dubbo URL
+     */
     private void doExportUrls() {
+
+        // 加载注册中心 URL 数组
         List<URL> registryURLs = loadRegistries(true);
+        // 循环 `protocols` ，向逐个注册中心分组暴露服务。
         for (ProtocolConfig protocolConfig : protocols) {
+            //使用对应的协议，逐个向注册中心分组暴露服务。
+            //在这个方法中，包含了本地和远程两种暴露方式。
+            // 本地暴露不会向注册中心注册服务，因为仅仅用于 JVM 内部本地调用，内存中已经有相关信息。
             doExportUrlsFor1Protocol(protocolConfig, registryURLs);
         }
     }
 
+    /**
+     * 基于单个协议，暴露服务
+     * 1. 构建URL
+     * 2. 暴露服务
+     */
     private void doExportUrlsFor1Protocol(ProtocolConfig protocolConfig, List<URL> registryURLs) {
         String name = protocolConfig.getName();
         if (StringUtils.isEmpty(name)) {
@@ -551,18 +573,22 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
 
             // export to local if the config is not remote (export to remote only when config is remote)
             if (!Constants.SCOPE_REMOTE.equalsIgnoreCase(scope)) {
-                exportLocal(url);
+                exportLocal(url);  //本地暴露
             }
             // export to remote if the config is not local (export to local only when config is local)
-            if (!Constants.SCOPE_LOCAL.equalsIgnoreCase(scope)) {
+            if (!Constants.SCOPE_LOCAL.equalsIgnoreCase(scope)) {   //远程暴露
                 if (logger.isInfoEnabled()) {
                     logger.info("Export dubbo service " + interfaceClass.getName() + " to url " + url);
                 }
                 if (CollectionUtils.isNotEmpty(registryURLs)) {
                     for (URL registryURL : registryURLs) {
+                        // "dynamic" ：服务是否动态注册，如果设为false，注册后将显示后disable状态，需人工启用，并且服务提供者停止时，也不会自动取消册，需人工禁用。
                         url = url.addParameterIfAbsent(Constants.DYNAMIC_KEY, registryURL.getParameter(Constants.DYNAMIC_KEY));
+                        // 获得监控中心 URL
                         URL monitorUrl = loadMonitor(registryURL);
                         if (monitorUrl != null) {
+                            // 将监控中心的 URL 作为 "monitor" 参数添加到服务提供者的 URL 中，并且需要编码。
+                            // 通过这样的方式，服务提供者的 URL 中，包含了监控中心的配置。
                             url = url.addParameterAndEncoded(Constants.MONITOR_KEY, monitorUrl.toFullString());
                         }
                         if (logger.isInfoEnabled()) {
@@ -572,16 +598,36 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
                         // For providers, this is used to enable custom proxy to generate invoker
                         String proxy = url.getParameter(Constants.PROXY_KEY);
                         if (StringUtils.isNotEmpty(proxy)) {
+                            // 将服务体用这的 URL 作为 "export" 参数添加到注册中心的 URL 中。
+                            // 通过这样的方式，注册中心的 URL 中，包含了服务提供者的配置。
                             registryURL = registryURL.addParameter(Constants.PROXY_KEY, proxy);
                         }
-
+                        // 使用 ProxyFactory 创建 Invoker 对象
+                        // 该 Invoker 对象，执行 #invoke(invocation) 方法时，内部会调用 Service 对象( ref )对应的调用方法。
+                        // ✨✨✨✨✨注意：传递的是注册中心的 URL
                         Invoker<?> invoker = proxyFactory.getInvoker(ref, (Class) interfaceClass, registryURL.addParameterAndEncoded(Constants.EXPORT_KEY, url.toFullString()));
+                        // 创建 DelegateProviderMetaDataInvoker 对象
+                        // 该对象在 Invoker 对象的基础上，增加了当前服务提供者 ServiceConfig 对象。
                         DelegateProviderMetaDataInvoker wrapperInvoker = new DelegateProviderMetaDataInvoker(invoker, this);
-
+                        // 使用 Protocol 暴露 Invoker 对象
+                        // 此处 Dubbo SPI 自适应的特性的好处就出来了，可以自动根据 URL 参数，获得对应的拓展实现。
+                        // 例如，invoker 传入后，根据 invoker.url 自动获得对应 Protocol 拓展实现为 DubboProtocol 。
+                        // 实际上，Protocol 有两个 Wrapper 拓展实现类： ProtocolFilterWrapper、ProtocolListenerWrapper 。
+                        // 所以，#export(...) 方法的调用顺序是：
+                        //
+                        //      Protocol$Adaptive => ProtocolFilterWrapper => ProtocolListenerWrapper => RegistryProtocol
+                        //      =>
+                        //      Protocol$Adaptive => ProtocolFilterWrapper => ProtocolListenerWrapper => DubboProtocol
+                        // 也就是说，这一条大的调用链，包含两条小的调用链。原因是：
+                        //     首先，传入的是注册中心的 URL ，通过 Protocol$Adaptive 获取到的是 RegistryProtocol 对象。
+                        //     其次，RegistryProtocol 会在其 #export(...) 方法中，使用服务提供者的 URL ( 即注册中心的 URL 的 export 参数值)，再次调用 Protocol$Adaptive 获取到的是 DubboProtocol 对象，进行服务暴露。
+                        // 为什么是这样的顺序？通过这样的顺序，可以实现类似 AOP 的效果，在本地服务器启动完成后，再向注册中心注册。
+                        // 这也是为什么上文提到的 “为什么传递的是注册中心的 URL” 的原因。
                         Exporter<?> exporter = protocol.export(wrapperInvoker);
+                        //添加到 exporters
                         exporters.add(exporter);
                     }
-                } else {
+                } else {  // 用于被服务消费者直连服务提供者，参见文档 http://dubbo.apache.org/zh-cn/docs/user/demos/explicit-target.html 。主要用于开发测试环境使用。
                     Invoker<?> invoker = proxyFactory.getInvoker(ref, (Class) interfaceClass, url);
                     DelegateProviderMetaDataInvoker wrapperInvoker = new DelegateProviderMetaDataInvoker(invoker, this);
 
@@ -604,13 +650,25 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void exportLocal(URL url) {
         if (!Constants.LOCAL_PROTOCOL.equalsIgnoreCase(url.getProtocol())) {
+            // 创建本地 Dubbo URL
+            // 基于原有 url ，创建新的服务的本地 Dubbo URL 对象，并设置属性 protocol=injvm host=127.0.0.1 port=0 。
+            // 因为 url 在后面远程暴露服务会使用，所以要新创建。
             URL local = URLBuilder.from(url)
-                    .setProtocol(Constants.LOCAL_PROTOCOL)
-                    .setHost(LOCALHOST_VALUE)
+                    .setProtocol(Constants.LOCAL_PROTOCOL)  // injvm
+                    .setHost(LOCALHOST_VALUE)  // 本地
                     .setPort(0)
                     .build();
+            // 使用 ProxyFactory 创建 Invoker 对象
+            // 使用 Protocol 暴露 Invoker 对象
+            //此处 Dubbo SPI 自适应的特性的好处就出来了，可以自动根据 URL 参数，获得对应的拓展实现。
+            // 例如，invoker 传入后，根据 invoker.url 自动获得对应 Protocol 拓展实现为 InjvmProtocol 。
+            //实际上，Protocol 有两个 Wrapper 拓展实现类： ProtocolFilterWrapper、ProtocolListenerWrapper 。
+            // 所以，#export(...) 方法的调用顺序是：Protocol$Adaptive => ProtocolFilterWrapper => ProtocolListenerWrapper => InjvmProtocol 。
             Exporter<?> exporter = protocol.export(
+                // 创建 Invoker 对象。
+                // 该 Invoker 对象，执行 #invoke(invocation) 方法时，内部会调用 Service 对象( ref )对应的调用方法。
                     proxyFactory.getInvoker(ref, (Class) interfaceClass, local));
+            // 添加到 `exporters`
             exporters.add(exporter);
             logger.info("Export dubbo service " + interfaceClass.getName() + " to local registry");
         }

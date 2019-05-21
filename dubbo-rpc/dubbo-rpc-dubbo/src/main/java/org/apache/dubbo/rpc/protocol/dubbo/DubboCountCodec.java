@@ -29,8 +29,16 @@ import org.apache.dubbo.rpc.RpcResult;
 
 import java.io.IOException;
 
+/**
+ * 实现 Codec2 接口，支持【多消息】的编解码器。
+ *
+ * 在 Dubbo Client 和 Server 创建的过程，我们看到设置了编解码器为 "dubbo" ，从而通过 Dubbo SPI 机制，加载到 DubboCountCodec
+ */
 public final class DubboCountCodec implements Codec2 {
 
+    /**
+     * 编解码器
+     */
     private DubboCodec codec = new DubboCodec();
 
     @Override
@@ -39,23 +47,38 @@ public final class DubboCountCodec implements Codec2 {
     }
 
     @Override
+    /**
+     * 解码
+     *
+     * 包含两块逻辑：1）多消息解析的支持。
+     *            2）记录每条消息的长度，用于 MonitorFilter 监控。
+     */
     public Object decode(Channel channel, ChannelBuffer buffer) throws IOException {
+        // 记录当前读位置 用于下面计算每条消息的长度。
         int save = buffer.readerIndex();
+        // 创建 MultiMessage 对象  MultiMessageHandler 支持对它的处理分发
         MultiMessage result = MultiMessage.create();
-        do {
+        do {  //循环解析消息，直到结束
+            // 解码
             Object obj = codec.decode(channel, buffer);
             if (Codec2.DecodeResult.NEED_MORE_INPUT == obj) {
+                // 输入不够，重置读进度  字节数组不够，重置读进度，结束解析
                 buffer.readerIndex(save);
                 break;
-            } else {
+            } else {  // 解析到消息
+                // 添加结果消息
                 result.addMessage(obj);
+                // 记录消息长度到隐式参数集合，用于 MonitorFilter 监控
                 logMessageLength(obj, buffer.readerIndex() - save);
+                // 记录当前读位置
                 save = buffer.readerIndex();
             }
         } while (true);
+        // 需要更多的输入
         if (result.isEmpty()) {
             return Codec2.DecodeResult.NEED_MORE_INPUT;
         }
+        // 返回解析到的消息
         if (result.size() == 1) {
             return result.get(0);
         }

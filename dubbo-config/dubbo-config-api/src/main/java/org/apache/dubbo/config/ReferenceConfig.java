@@ -79,6 +79,9 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
      * Actually，when the {@link ExtensionLoader} init the {@link Protocol} instants,it will automatically wraps two
      * layers, and eventually will get a <b>ProtocolFilterWrapper</b> or <b>ProtocolListenerWrapper</b>
      */
+    /**
+     * 自适应 Protocol 实现对象
+     */
     private static final Protocol refprotocol = ExtensionLoader.getExtensionLoader(Protocol.class).getAdaptiveExtension();
 
     /**
@@ -90,6 +93,9 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
     /**
      * A {@link ProxyFactory} implementation that will generate a reference service's proxy,the JavassistProxyFactory is
      * its default implementation
+     */
+    /**
+     * 自适应 ProxyFactory 实现对象
      */
     private static final ProxyFactory proxyFactory = ExtensionLoader.getExtensionLoader(ProxyFactory.class).getAdaptiveExtension();
 
@@ -115,6 +121,9 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
 
     /**
      * The url for peer-to-peer invocation
+     */
+    /**
+     * 直连服务提供者地址
      */
     private String url;
 
@@ -339,22 +348,38 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
     }
 
     @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
+    /**
+     * map: URL 参数集合，包含服务引用配置对象的配置项。
+     */
     private T createProxy(Map<String, String> map) {
+        // 本地引用
         if (shouldJvmRefer(map)) {
+            // 创建服务引用 URL 对象
             URL url = new URL(Constants.LOCAL_PROTOCOL, Constants.LOCALHOST_VALUE, 0, interfaceClass.getName()).addParameters(map);
+            // 引用服务，返回 Invoker 对象
+            // 此处 Dubbo SPI 自适应的特性的好处就出来了，可以自动根据 URL 参数，获得对应的拓展实现。例如，invoker 传入后，根据 invoker.url 自动获得对应 Protocol 拓展实现为 InjvmProtocol 。
+            // 实际上，Protocol 有两个 Wrapper 拓展实现类： ProtocolFilterWrapper、ProtocolListenerWrapper 。
+            // 所以，#refer(...) 方法的调用顺序是：Protocol$Adaptive => ProtocolFilterWrapper => ProtocolListenerWrapper => InjvmProtocol 。
             invoker = refprotocol.refer(interfaceClass, url);
             if (logger.isInfoEnabled()) {
                 logger.info("Using injvm service " + interfaceClass.getName());
             }
+        // 正常流程，一般为远程引用
         } else {
+            // 定义直连地址，可以是服务提供者的地址，也可以是注册中心的地址
             if (url != null && url.length() > 0) { // user specified URL, could be peer-to-peer address, or register center's address.
+                // 拆分地址成数组，使用 ";" 分隔。
                 String[] us = Constants.SEMICOLON_SPLIT_PATTERN.split(url);
                 if (us != null && us.length > 0) {
+                    // 循环数组，添加到 `url` 中。
                     for (String u : us) {
+                        // 创建 URL 对象
                         URL url = URL.valueOf(u);
+                        // 设置默认路径
                         if (StringUtils.isEmpty(url.getPath())) {
                             url = url.setPath(interfaceName);
                         }
+                        // 注册中心的地址，带上服务引用的配置参数
                         if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
                             urls.add(url.addParameterAndEncoded(Constants.REFER_KEY, StringUtils.toQueryString(map)));
                         } else {
@@ -362,15 +387,21 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                         }
                     }
                 }
+            // 注册中心
             } else { // assemble URL from register center's configuration
                 checkRegistry();
+                // 加载注册中心 URL 数组
                 List<URL> us = loadRegistries(false);
+                // 循环数组，添加到 `url` 中。
                 if (CollectionUtils.isNotEmpty(us)) {
                     for (URL u : us) {
+                        // 加载监控中心 URL
                         URL monitorUrl = loadMonitor(u);
+                        // 服务引用配置对象 `map`，带上监控中心的 URL
                         if (monitorUrl != null) {
                             map.put(Constants.MONITOR_KEY, URL.encode(monitorUrl.toFullString()));
                         }
+                        // 注册中心的地址，带上服务引用的配置参数
                         urls.add(u.addParameterAndEncoded(Constants.REFER_KEY, StringUtils.toQueryString(map)));
                     }
                 }
@@ -379,22 +410,39 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
                 }
             }
 
+            // 单 `urls` 时，引用服务，返回 Invoker 对象
             if (urls.size() == 1) {
+                // 引用服务
+                // 此处 Dubbo SPI 自适应的特性的好处就出来了，可以自动根据 URL 参数，获得对应的拓展实现。例如，invoker 传入后，根据 invoker.url 自动获得对应 Protocol 拓展实现为 DubboProtocol 。
+                // 实际上，Protocol 有两个 Wrapper 拓展实现类： ProtocolFilterWrapper、ProtocolListenerWrapper 。所以，#export(...) 方法的调用顺序是：
+                //     Protocol$Adaptive => ProtocolFilterWrapper => ProtocolListenerWrapper => RegistryProtocol
+                //     =>
+                //     Protocol$Adaptive => ProtocolFilterWrapper => ProtocolListenerWrapper => DubboProtocol
+                // 也就是说，这一条大的调用链，包含两条小的调用链。原因是：
+                //    首先，传入的是注册中心的 URL ，通过 Protocol$Adaptive 获取到的是 RegistryProtocol 对象。
+                //    其次，RegistryProtocol 会在其 #refer(...) 方法中，使用服务提供者的 URL ( 即注册中心的 URL 的 refer 参数值)，再次调用 Protocol$Adaptive 获取到的是 DubboProtocol 对象，进行服务暴露。
+                // 为什么是这样的顺序？通过这样的顺序，可以实现类似 AOP 的效果，在获取服务提供者列表后，再创建连接服务提供者的客户端。
                 invoker = refprotocol.refer(interfaceClass, urls.get(0));
-            } else {
+            } else {  // 多注册中心时候会出现多个 urls
+                // 循环 `urls` ，引用服务，返回 Invoker 对象
                 List<Invoker<?>> invokers = new ArrayList<Invoker<?>>();
                 URL registryURL = null;
                 for (URL url : urls) {
+                    // 引用服务
                     invokers.add(refprotocol.refer(interfaceClass, url));
+                    // 使用最后一个注册中心的 URL
                     if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
                         registryURL = url; // use last registry url
                     }
                 }
+                // 有注册中心
                 if (registryURL != null) { // registry url is available
                     // use RegistryAwareCluster only when register's cluster is available
+                    // 对有注册中心的 Cluster 只用 AvailableCluster
                     URL u = registryURL.addParameter(Constants.CLUSTER_KEY, RegistryAwareCluster.NAME);
                     // The invoker wrap relation would be: RegistryAwareClusterInvoker(StaticDirectory) -> FailoverClusterInvoker(RegistryDirectory, will execute route) -> Invoker
                     invoker = cluster.join(new StaticDirectory(u, invokers));
+                // 无注册中心
                 } else { // not a registry url, must be direct invoke.
                     invoker = cluster.join(new StaticDirectory(invokers));
                 }
@@ -419,6 +467,8 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
             metadataReportService.publishConsumer(consumerURL);
         }
         // create service proxy
+        // 创建 Service 代理对象
+        // 该 Service 代理对象的内部，会调用 Invoker#invoke(Invocation) 方法，进行 Dubbo 服务的调用。
         return (T) proxyFactory.getProxy(invoker);
     }
 
@@ -432,9 +482,12 @@ public class ReferenceConfig<T> extends AbstractReferenceConfig {
      */
     protected boolean shouldJvmRefer(Map<String, String> map) {
         URL tmpUrl = new URL("temp", "localhost", 0, map);
+        // 是否本地引用
         boolean isJvmRefer;
+        // injvm 属性为空，不通过该属性判断
         if (isInjvm() == null) {
             // if a url is specified, don't do local reference
+            // 直连服务提供者，参见文档《直连提供者》http://dubbo.apache.org/zh-cn/docs/user/demos/explicit-target.html
             if (url != null && url.length() > 0) {
                 isJvmRefer = false;
             } else {

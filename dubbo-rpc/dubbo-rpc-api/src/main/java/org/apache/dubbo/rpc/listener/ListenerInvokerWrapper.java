@@ -30,13 +30,23 @@ import java.util.List;
 
 /**
  * ListenerInvoker
+ * 具有监听器功能的 Invoker 包装器
+ *
+ * 主要目的是为了 InvokerListener 的触发，目前该监听器只有 #referred(invoker) #destroyed(invoker) 两个接口方法，并未对 #invoke(invocation) 的过程，实现监听。
+ * 因此，ListenerInvokerWrapper 的 #invoke(invocation) 的实现基本等于零
  */
 public class ListenerInvokerWrapper<T> implements Invoker<T> {
 
     private static final Logger logger = LoggerFactory.getLogger(ListenerInvokerWrapper.class);
 
+    /**
+     * 真实的 Invoker 对象
+     */
     private final Invoker<T> invoker;
 
+    /**
+     * Invoker 监听器数组
+     */
     private final List<InvokerListener> listeners;
 
     public ListenerInvokerWrapper(Invoker<T> invoker, List<InvokerListener> listeners) {
@@ -45,11 +55,13 @@ public class ListenerInvokerWrapper<T> implements Invoker<T> {
         }
         this.invoker = invoker;
         this.listeners = listeners;
+        // 执行监听器
         if (CollectionUtils.isNotEmpty(listeners)) {
             for (InvokerListener listener : listeners) {
                 if (listener != null) {
                     try {
                         listener.referred(invoker);
+                    // 和 ListenerExporterWrapper 不同，若执行过程中发生异常 RuntimeException ，仅打印错误日志，继续执行，最终不抛出异常。
                     } catch (Throwable t) {
                         logger.error(t.getMessage(), t);
                     }

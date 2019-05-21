@@ -701,6 +701,9 @@ public class Constants {
 
     public static final long DEFAULT_TPS_LIMIT_INTERVAL = 60 * 1000;
 
+    /**
+     * 目前在 Dubbo 文档中，并未说明，应该是性能调优，具体笔者还没测试过。嘿嘿。
+     */
     public static final String DECODE_IN_IO_THREAD_KEY = "decode.in.io";
 
     public static final boolean DEFAULT_DECODE_IN_IO_THREAD = true;

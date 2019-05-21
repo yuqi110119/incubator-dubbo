@@ -24,12 +24,30 @@ import org.apache.dubbo.rpc.RpcException;
 
 /**
  * @date 2017/11/23
+ * 相比纯粹的 Invoker 对象，又多了运维命令需要的属性。
+ * 例如 isReg 状态属性，可以在使用下线服务命令后，标记为 false 。
+ * 想提前深入了解的胖友，可以看下 com.alibaba.dubbo.qos.command.impl.Offline 和 com.alibaba.dubbo.qos.command.impl.Online 类。
  */
 public class ProviderInvokerWrapper<T> implements Invoker {
+    /**
+     * Invoker 对象
+     */
     private Invoker<T> invoker;
+    /**
+     * 原始 URL
+     */
     private URL originUrl;
+    /**
+     * 注册中心 URL
+     */
     private URL registryUrl;
+    /**
+     * 服务提供者 URL
+     */
     private URL providerUrl;
+    /**
+     * 是否注册
+     */
     private volatile boolean isReg;
 
     public ProviderInvokerWrapper(Invoker<T> invoker,URL registryUrl,URL providerUrl) {

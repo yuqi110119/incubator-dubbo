@@ -41,19 +41,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * AbstractInvoker.
+ * 在 #invoke(invocation) 方法中，实现了公用逻辑，同时抽象了 #doInvoke(invocation) 方法，子类实现自定义逻辑
  */
 public abstract class AbstractInvoker<T> implements Invoker<T> {
 
     protected final Logger logger = LoggerFactory.getLogger(getClass());
 
+    /**
+     * 接口类型
+     */
     private final Class<T> type;
 
+    /**
+     * 服务 URL
+     */
     private final URL url;
 
+    /**
+     * 公用的隐式传参。在 {@link #invoke(Invocation)} 方法中使用。
+     */
     private final Map<String, String> attachment;
 
+    /**
+     * 是否可用
+     */
     private volatile boolean available = true;
 
+    /**
+     * 是否销毁
+     */
     private AtomicBoolean destroyed = new AtomicBoolean(false);
 
     public AbstractInvoker(Class<T> type, URL url) {
@@ -134,10 +150,16 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
                     + ", dubbo version is " + Version.getVersion() + ", this invoker should not be used any longer");
         }
         RpcInvocation invocation = (RpcInvocation) inv;
+        // 设置 `invoker` 属性
+        // 设置 invoker 属性为自己。在上面，我们已经看到 Invoker 是层层嵌套，只要到了这里才是真正的 Invoker 对象。
         invocation.setInvoker(this);
+        // 添加公用的隐式传参，例如，`path` `interface` 等等，详见 RpcInvocation 类。
         if (CollectionUtils.isNotEmptyMap(attachment)) {
             invocation.addAttachmentsIfAbsent(attachment);
         }
+        // 添加自定义的隐士传参
+        //注意：RpcContext 是一个临时状态记录器，当接收到 RPC 请求，或发起 RPC 请求时，RpcContext 的状态都会变化。
+        //比如：A 调 B，B 再调 C，则 B 机器上，在 B 调 C 之前，RpcContext 记录的是 A 调 B 的信息，在 B 调 C 之后，RpcContext 记录的是 B 调 C 的信息。
         Map<String, String> contextAttachments = RpcContext.getContext().getAttachments();
         if (CollectionUtils.isNotEmptyMap(contextAttachments)) {
             /**
@@ -148,12 +170,15 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
              */
             invocation.addAttachments(contextAttachments);
         }
+        // 设置 `async=true` ，若为异步方法
         if (getUrl().getMethodParameter(invocation.getMethodName(), Constants.ASYNC_KEY, false)) {
             invocation.setAttachment(Constants.ASYNC_KEY, Boolean.TRUE.toString());
         }
         RpcUtils.attachInvocationIdIfAsync(getUrl(), invocation);
 
+        // 执行调用
         try {
+            // 抽象方法，实现不同协议自定义的调用实现
             return doInvoke(invocation);
         } catch (InvocationTargetException e) { // biz exception
             Throwable te = e.getTargetException();

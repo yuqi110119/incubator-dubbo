@@ -34,14 +34,28 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * InvokerWrapper
+ *
+ * 代理 Invoker 对象的抽象类
+ *
+ * provider的实现类会被封装成为一个 AbstractProxyInvoker 实例，并新生成一个 Exporter 实例。
+ * 这样当网络通讯层收到一个请求后，会找到对应的 Exporter 实例，并调用它所对应的 AbstractProxyInvoker 实例，从而真正调用了服务提供者的代码
  */
 public abstract class AbstractProxyInvoker<T> implements Invoker<T> {
     Logger logger = LoggerFactory.getLogger(AbstractProxyInvoker.class);
 
+    /**
+     * 代理的对象，一般是 Service 实现对象
+     */
     private final T proxy;
 
+    /**
+     * 接口类型，一般是 Service 接口
+     */
     private final Class<T> type;
 
+    /**
+     * URL 对象，一般是暴露服务的 URL 对象
+     */
     private final URL url;
 
     public AbstractProxyInvoker(T proxy, Class<T> type, URL url) {
@@ -83,12 +97,14 @@ public abstract class AbstractProxyInvoker<T> implements Invoker<T> {
     public Result invoke(Invocation invocation) throws RpcException {
         RpcContext rpcContext = RpcContext.getContext();
         try {
+            // 调用 #doInvoke(..) 抽象方法，执行调用，返回调用结果
             Object obj = doInvoke(proxy, invocation.getMethodName(), invocation.getParameterTypes(), invocation.getArguments());
             if (RpcUtils.isReturnTypeFuture(invocation)) {
                 return new AsyncRpcResult((CompletableFuture<Object>) obj);
             } else if (rpcContext.isAsyncStarted()) { // ignore obj in case of RpcContext.startAsync()? always rely on user to write back.
                 return new AsyncRpcResult(((AsyncContextImpl)(rpcContext.getAsyncContext())).getInternalFuture());
             } else {
+                // 创建 RpcResult 对象，将结果包装返回
                 return new RpcResult(obj);
             }
         } catch (InvocationTargetException e) {
@@ -96,12 +112,23 @@ public abstract class AbstractProxyInvoker<T> implements Invoker<T> {
             if (rpcContext.isAsyncStarted() && !rpcContext.stopAsync()) {
                 logger.error("Provider async started, but got an exception from the original method, cannot write the exception back to consumer because an async result may have returned the new thread.", e);
             }
+            // 发生 InvocationTargetException 异常，创建 RpcResult 对象包装
             return new RpcResult(e.getTargetException());
         } catch (Throwable e) {
             throw new RpcException("Failed to invoke remote proxy method " + invocation.getMethodName() + " to " + getUrl() + ", cause: " + e.getMessage(), e);
         }
     }
 
+    /**
+     * 执行调用
+     *
+     * @param proxy 代理的对象
+     * @param methodName 方法名
+     * @param parameterTypes 方法参数类型数组
+     * @param arguments 方法参数数组
+     * @return 调用结果
+     * @throws Throwable 发生异常
+     */
     protected abstract Object doInvoke(T proxy, String methodName, Class<?>[] parameterTypes, Object[] arguments) throws Throwable;
 
     @Override

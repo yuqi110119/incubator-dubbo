@@ -136,12 +136,14 @@ public class RpcUtils {
     }
 
     public static String getMethodName(Invocation invocation) {
+        // 泛化调用，第一个参数为方法名
         if (Constants.$INVOKE.equals(invocation.getMethodName())
                 && invocation.getArguments() != null
                 && invocation.getArguments().length > 0
                 && invocation.getArguments()[0] instanceof String) {
             return (String) invocation.getArguments()[0];
         }
+        // 普通调用，直接获得
         return invocation.getMethodName();
     }
 
@@ -173,9 +175,15 @@ public class RpcUtils {
         return invocation.getParameterTypes();
     }
 
+    /**
+     * 判断是否异步调用  获得是否异步。服务引用或方法，任一配置 async = true ，即为异步。
+     * @param url
+     * @param inv
+     * @return
+     */
     public static boolean isAsync(URL url, Invocation inv) {
         boolean isAsync;
-        if (Boolean.TRUE.toString().equals(inv.getAttachment(Constants.ASYNC_KEY))) {
+        if (Boolean.TRUE.toString().equals(inv.getAttachment(Constants.ASYNC_KEY))) {  // RpcContext#asyncCall(Callable) 方法，可以设置
             isAsync = true;
         } else {
             isAsync = url.getMethodParameter(getMethodName(inv), Constants.ASYNC_KEY, false);

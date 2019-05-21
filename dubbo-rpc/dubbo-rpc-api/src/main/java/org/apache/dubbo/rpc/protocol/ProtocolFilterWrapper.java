@@ -32,6 +32,7 @@ import java.util.List;
 
 /**
  * ListenerProtocol
+ * Protocol 的 Wrapper 拓展实现类，用于给 Invoker 增加过滤链。
  */
 public class ProtocolFilterWrapper implements Protocol {
 
@@ -44,10 +45,39 @@ public class ProtocolFilterWrapper implements Protocol {
         this.protocol = protocol;
     }
 
+    /**
+     * 创建带 Filter 链的 Invoker 对象
+     * @param invoker  Invoker 对象
+     * @param key  获取 URL 参数名
+     *             该参数用于获得 ServiceConfig 或 ReferenceConfig 配置的自定义过滤器。
+     *             以 ServiceConfig 举例子，例如 url = injvm://127.0.0.1/com.alibaba.dubbo.demo.DemoService?anyhost=true&application=demo-provider&bind.ip=192.168.3.17&bind.port=20880&default.delay=-1&default.retries=0&default.service.filter=demo&delay=-1&dubbo=2.0.0&generic=false&interface=com.alibaba.dubbo.demo.DemoService&methods=sayHello&pid=81844&qos.port=22222&service.filter=demo&side=provider&timestamp=1520682156043 中，
+     *             service.filter=demo，这是笔者配置自定义的 DemoFilter 过滤器。
+     *             <dubbo:service interface="com.alibaba.dubbo.demo.DemoService" ref="demoService" filter="demo" />
+
+     * @param group
+     *        在暴露服务时，group = provider 。
+     *        在引用服务时，group = consumer 。
+     *
+     *        在服务消费者和提供者的过滤器是不同的
+     * @param <T>
+     * @return
+     */
     private static <T> Invoker<T> buildInvokerChain(final Invoker<T> invoker, String key, String group) {
         Invoker<T> last = invoker;
+        // 获得过滤器数组 继续以上面的例子为基础，filters 为：
+        //  EchoFilter
+        //  ClassLoaderFilter
+        //  GenericFilter
+        //  ContextFilter
+        //  TraceFilter
+        //  TimeoutFilter
+        //  MonitorFilter
+        //  ExceptionFilter
+        //  DemoFilter 【自定义】
         List<Filter> filters = ExtensionLoader.getExtensionLoader(Filter.class).getActivateExtension(invoker.getUrl(), key, group);
         if (!filters.isEmpty()) {
+            // 倒序循环 Filter ，创建带 Filter 链的 Invoker 对象
+            // 因为是通过嵌套声明匿名类循环调用的方式，所以要倒序。通过这样的方式，实际过滤的顺序，还是我们上面看到的正序。
             for (int i = filters.size() - 1; i >= 0; i--) {
                 final Filter filter = filters.get(i);
                 final Invoker<T> next = last;
@@ -70,6 +100,8 @@ public class ProtocolFilterWrapper implements Protocol {
 
                     @Override
                     public Result invoke(Invocation invocation) throws RpcException {
+                        // 调用 Filter#(invoker, invocation) 方法，不断执行过滤逻辑。
+                        // 而在 Filter 中，又不断调用 Invoker#invoker(invocation) 方法，最终最后一个 Filter ，会调用 XxxxInvoker#invoke(invocation) 方法，继续执行逻辑
                         Result result = filter.invoke(next, invocation);
                         if (result instanceof AsyncRpcResult) {
                             AsyncRpcResult asyncResult = (AsyncRpcResult) result;
@@ -102,17 +134,23 @@ public class ProtocolFilterWrapper implements Protocol {
 
     @Override
     public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
+        // 注册中心  注册中心的 URL ，无需创建 Filter 过滤链。
         if (Constants.REGISTRY_PROTOCOL.equals(invoker.getUrl().getProtocol())) {
             return protocol.export(invoker);
         }
-        return protocol.export(buildInvokerChain(invoker, Constants.SERVICE_FILTER_KEY, Constants.PROVIDER));
+        // 建立带有 Filter 过滤链的 Invoker ，再暴露服务。
+        return protocol.export(
+            buildInvokerChain(invoker, Constants.SERVICE_FILTER_KEY, Constants.PROVIDER));//创建带有 Filter 过滤链的 Invoker 对象
     }
 
     @Override
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
+        // 注册中心
         if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
             return protocol.refer(type, url);
         }
+        // 引用服务，返回 Invoker 对象
+        // 给改 Invoker 对象，包装成带有 Filter 过滤链的 Invoker 对象
         return buildInvokerChain(protocol.refer(type, url), Constants.REFERENCE_FILTER_KEY, Constants.CONSUMER);
     }
 

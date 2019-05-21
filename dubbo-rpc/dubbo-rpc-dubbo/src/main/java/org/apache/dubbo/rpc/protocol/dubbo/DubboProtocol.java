@@ -66,19 +66,26 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class DubboProtocol extends AbstractProtocol {
 
     public static final String NAME = "dubbo";
-
     public static final int DEFAULT_PORT = 20880;
     private static final String IS_CALLBACK_SERVICE_INVOKE = "_isCallBackServiceInvoke";
+
     private static DubboProtocol INSTANCE;
 
     /**
      * <host:port,Exchanger>
+     * 通信服务器集合
+     *
+     * key: 服务器地址。格式为：host:port
      */
     private final Map<String, ExchangeServer> serverMap = new ConcurrentHashMap<>();
     /**
      * <host:port,Exchanger>
+     * 通信客户端集合
+     *
+     * key: 服务器地址。格式为：host:port
      */
     private final Map<String, List<ReferenceCountExchangeClient>> referenceClientMap = new ConcurrentHashMap<>();
+
     private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<>();
     private final Set<String> optimizers = new ConcurrentHashSet<>();
     /**
@@ -87,6 +94,9 @@ public class DubboProtocol extends AbstractProtocol {
      */
     private final ConcurrentMap<String, String> stubServiceMethodsMap = new ConcurrentHashMap<>();
 
+    /**
+     * 这个处理器，负责将请求，转发到对应的 Invoker 对象，执行逻辑，返回结果
+     */
     private ExchangeHandler requestHandler = new ExchangeHandlerAdapter() {
 
         @Override
@@ -264,6 +274,7 @@ public class DubboProtocol extends AbstractProtocol {
     public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
         URL url = invoker.getUrl();
 
+        // 创建 DubboExporter 对象，并添加到 `exporterMap` 。
         // export service.
         String key = serviceKey(url);
         DubboExporter<T> exporter = new DubboExporter<T>(invoker, key, exporterMap);
@@ -285,7 +296,9 @@ public class DubboProtocol extends AbstractProtocol {
             }
         }
 
+        // 启动服务器
         openServer(url);
+        // 初始化序列化优化器
         optimizeSerialization(url);
 
         return exporter;
@@ -305,27 +318,37 @@ public class DubboProtocol extends AbstractProtocol {
                         serverMap.put(key, createServer(url));
                     }
                 }
-            } else {
+            } else {// 因为键是 host:port ，那么例如，多个 Service 共用同一个 Protocol ，服务器是同一个对象。
                 // server supports reset, use together with override
                 server.reset(url);
             }
         }
     }
 
+    /**
+     * 创建并启动通信服务器
+     * @param url
+     * @return
+     */
     private ExchangeServer createServer(URL url) {
         url = URLBuilder.from(url)
                 // send readonly event when server closes, it's enabled by default
+            // 默认开启 server 关闭时发送 READ_ONLY 事件
                 .addParameterIfAbsent(Constants.CHANNEL_READONLYEVENT_SENT_KEY, Boolean.TRUE.toString())
                 // enable heartbeat by default
+            // 默认开启 heartbeat
                 .addParameterIfAbsent(Constants.HEARTBEAT_KEY, String.valueOf(Constants.DEFAULT_HEARTBEAT))
+            // 设置编解码器为 `"Dubbo"`
                 .addParameter(Constants.CODEC_KEY, DubboCodec.NAME)
                 .build();
+        // 校验 Server 的 Dubbo SPI 拓展是否存在
         String str = url.getParameter(Constants.SERVER_KEY, Constants.DEFAULT_REMOTING_SERVER);
 
         if (str != null && str.length() > 0 && !ExtensionLoader.getExtensionLoader(Transporter.class).hasExtension(str)) {
             throw new RpcException("Unsupported server type: " + str + ", url: " + url);
         }
 
+        // 启动服务器
         ExchangeServer server;
         try {
             server = Exchangers.bind(url, requestHandler);
@@ -333,6 +356,7 @@ public class DubboProtocol extends AbstractProtocol {
             throw new RpcException("Fail to start server(url: " + url + ") " + e.getMessage(), e);
         }
 
+        // 校验 Client 的 Dubbo SPI 拓展是否存在
         str = url.getParameter(Constants.CLIENT_KEY);
         if (str != null && str.length() > 0) {
             Set<String> supportedTypes = ExtensionLoader.getExtensionLoader(Transporter.class).getSupportedExtensions();
@@ -383,24 +407,34 @@ public class DubboProtocol extends AbstractProtocol {
 
     @Override
     public <T> Invoker<T> refer(Class<T> serviceType, URL url) throws RpcException {
+        // 初始化序列化优化器
         optimizeSerialization(url);
 
         // create rpc invoker.
+        //                                                              获得远程通信客户端数组
+        // 创建 DubboInvoker 对象
         DubboInvoker<T> invoker = new DubboInvoker<T>(serviceType, url, getClients(url), invokers);
+        // 添加到 `invokers`
         invokers.add(invoker);
 
         return invoker;
     }
 
+    /**
+     * 获得连接服务提供者的远程通信客户端数组
+     *
+     * @param url 服务提供者 URL
+     * @return 远程通信客户端
+     */
     private ExchangeClient[] getClients(URL url) {
         // whether to share connection
-
+        // 是否共享连接
         boolean useShareConnect = false;
 
         int connections = url.getParameter(Constants.CONNECTIONS_KEY, 0);
         List<ReferenceCountExchangeClient> shareClients = null;
         // if not configured, connection is shared, otherwise, one connection for one service
-        if (connections == 0) {
+        if (connections == 0) { // 未配置时，默认共享
             useShareConnect = true;
 
             /**
@@ -412,12 +446,15 @@ public class DubboProtocol extends AbstractProtocol {
             shareClients = getSharedClient(url, connections);
         }
 
+        // 创建连接服务提供者的 ExchangeClient 对象数组
+        // 注意，若开启共享连接，基于 URL 为维度共享。
+        // 默认 0 。即，对同一个远程服务器，共用同一个连接。
+        // 大于 0 。即，每个服务引用，独立每一个连接。
         ExchangeClient[] clients = new ExchangeClient[connections];
         for (int i = 0; i < clients.length; i++) {
-            if (useShareConnect) {
+            if (useShareConnect) {  // 共享
                 clients[i] = shareClients.get(i);
-
-            } else {
+            } else {  // 不共享
                 clients[i] = initClient(url);
             }
         }
@@ -433,6 +470,7 @@ public class DubboProtocol extends AbstractProtocol {
      */
     private List<ReferenceCountExchangeClient> getSharedClient(URL url, int connectNum) {
         String key = url.getAddress();
+        // 从集合中，查找 ReferenceCountExchangeClient 对象
         List<ReferenceCountExchangeClient> clients = referenceClientMap.get(key);
 
         if (checkClientCanUse(clients)) {
@@ -549,16 +587,19 @@ public class DubboProtocol extends AbstractProtocol {
 
     /**
      * Create new connection
-     *
+     * 创建 ExchangeClient 对象，”连接”服务器。
      * @param url
      */
     private ExchangeClient initClient(URL url) {
 
         // client type setting.
+        // 校验 Client 的 Dubbo SPI 拓展是否存在
         String str = url.getParameter(Constants.CLIENT_KEY, url.getParameter(Constants.SERVER_KEY, Constants.DEFAULT_REMOTING_CLIENT));
 
+        // 设置编解码器为 Dubbo ，即 DubboCountCodec
         url = url.addParameter(Constants.CODEC_KEY, DubboCodec.NAME);
         // enable heartbeat by default
+        // 默认开启 heartbeat
         url = url.addParameterIfAbsent(Constants.HEARTBEAT_KEY, String.valueOf(Constants.DEFAULT_HEARTBEAT));
 
         // BIO is not allowed since it has severe performance issue.
@@ -567,12 +608,15 @@ public class DubboProtocol extends AbstractProtocol {
                     " supported client type is " + StringUtils.join(ExtensionLoader.getExtensionLoader(Transporter.class).getSupportedExtensions(), " "));
         }
 
+        // 连接服务器，创建客户端
         ExchangeClient client;
         try {
             // connection should be lazy
+            // 懒连接，创建 LazyConnectExchangeClient 对象
             if (url.getParameter(Constants.LAZY_CONNECT_KEY, false)) {
                 client = new LazyConnectExchangeClient(url, requestHandler);
 
+            // 直接连接，创建 HeaderExchangeClient 对象
             } else {
                 client = Exchangers.connect(url, requestHandler);
             }

@@ -39,19 +39,38 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * FailbackRegistry. (SPI, Prototype, ThreadSafe)
+ *
+ * 实现 AbstractRegistry 抽象类，支持失败重试的 Registry 抽象类。
+ * AbstractRegistry 进行的注册、订阅等操作，更多的是修改状态，而无和注册中心实际的操作。
+ * FailbackRegistry 在 AbstractRegistry 的基础上，实现了和注册中心实际的操作，并且支持失败重试的特性。
  */
 public abstract class FailbackRegistry extends AbstractRegistry {
 
     /*  retry task map */
 
+    /**
+     * 失败发起注册失败的 URL 集合
+     */
     private final ConcurrentMap<URL, FailedRegisteredTask> failedRegistered = new ConcurrentHashMap<URL, FailedRegisteredTask>();
 
+    /**
+     * 失败取消注册失败的 URL 集合
+     */
     private final ConcurrentMap<URL, FailedUnregisteredTask> failedUnregistered = new ConcurrentHashMap<URL, FailedUnregisteredTask>();
 
+    /**
+     * 失败发起订阅失败的监听器集合
+     */
     private final ConcurrentMap<Holder, FailedSubscribedTask> failedSubscribed = new ConcurrentHashMap<Holder, FailedSubscribedTask>();
 
+    /**
+     * 失败取消订阅失败的监听器集合
+     */
     private final ConcurrentMap<Holder, FailedUnsubscribedTask> failedUnsubscribed = new ConcurrentHashMap<Holder, FailedUnsubscribedTask>();
 
+    /**
+     * 失败通知通知的 URL 集合
+     */
     private final ConcurrentMap<Holder, FailedNotifiedTask> failedNotified = new ConcurrentHashMap<Holder, FailedNotifiedTask>();
 
     /**
@@ -226,6 +245,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
         super.register(url);
         removeFailedRegistered(url);
         removeFailedUnregistered(url);
+        // 向注册中心发送注册请求
         try {
             // Sending a registration request to the server side
             doRegister(url);
@@ -233,9 +253,10 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             Throwable t = e;
 
             // If the startup detection is opened, the Exception is thrown directly.
+            // 如果开启了启动时检测，则直接抛出异常
             boolean check = getUrl().getParameter(Constants.CHECK_KEY, true)
                     && url.getParameter(Constants.CHECK_KEY, true)
-                    && !Constants.CONSUMER_PROTOCOL.equals(url.getProtocol());
+                    && !Constants.CONSUMER_PROTOCOL.equals(url.getProtocol());  // 非消费者。消费者会在 `ReferenceConfig#createProxy(...)` 方法中，调用 `Invoker#avalible()` 方法，进行检查。
             boolean skipFailback = t instanceof SkipFailbackWrapperException;
             if (check || skipFailback) {
                 if (skipFailback) {
@@ -247,6 +268,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             }
 
             // Record a failed registration request to a failed list, retry regularly
+            // 将失败的注册请求记录到 `failedRegistered`，定时重试
             addFailedRegistered(url);
         }
     }

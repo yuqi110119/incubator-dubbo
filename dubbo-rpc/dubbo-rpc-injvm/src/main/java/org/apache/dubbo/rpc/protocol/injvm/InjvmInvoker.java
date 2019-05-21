@@ -29,11 +29,22 @@ import java.util.Map;
 
 /**
  * InjvmInvoker
+ * 实现 AbstractInvoker 抽象类，Injvm Invoker 实现类
  */
 class InjvmInvoker<T> extends AbstractInvoker<T> {
 
+    /**
+     * 服务键
+     */
     private final String key;
 
+    /**
+     * Exporter 集合
+     *
+     * key: 服务键
+     *
+     * 该值实际就是  AbstractProtocol#exporterMap
+     */
     private final Map<String, Exporter<?>> exporterMap;
 
     InjvmInvoker(Class<T> type, URL url, String key, Map<String, Exporter<?>> exporterMap) {
@@ -54,11 +65,16 @@ class InjvmInvoker<T> extends AbstractInvoker<T> {
 
     @Override
     public Result doInvoke(Invocation invocation) throws Throwable {
+        // 获得 Exporter 对象
+        // exporterMap 属性，就是从 InjvmProtocol 的 exporterMap 属性
+        // exporter 里面就有服务提供者的 Invoker 对象。调用 Invoker#invoke(invocation) 方法，调用服务。
         Exporter<?> exporter = InjvmProtocol.getExporter(exporterMap, getUrl());
         if (exporter == null) {
             throw new RpcException("Service [" + key + "] not found.");
         }
+        // 设置服务提供者地址为本地
         RpcContext.getContext().setRemoteAddress(Constants.LOCALHOST_VALUE, 0);
+        // 调用
         return exporter.getInvoker().invoke(invocation);
     }
 }

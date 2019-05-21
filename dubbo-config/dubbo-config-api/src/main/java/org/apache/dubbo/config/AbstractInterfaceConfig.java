@@ -289,9 +289,12 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
      *
      * @param provider whether it is the provider side
      * @return
+     *
+     * 加载注册中心 URL 数组
      */
     protected List<URL> loadRegistries(boolean provider) {
         // check && override if necessary
+        // 创建 注册中心 URL 数组
         List<URL> registryList = new ArrayList<URL>();
         if (CollectionUtils.isNotEmpty(registries)) {
             for (RegistryConfig config : registries) {
@@ -308,15 +311,18 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
                     if (!map.containsKey(Constants.PROTOCOL_KEY)) {
                         map.put(Constants.PROTOCOL_KEY, Constants.DUBBO_PROTOCOL);
                     }
+                    // 解析地址，创建 Dubbo URL 数组。（数组大小可以为一）
                     List<URL> urls = UrlUtils.parseURLs(address, map);
 
+                    // 循环 `url` ，设置 "registry" 和 "protocol" 属性。
                     for (URL url : urls) {
+                        // 设置 `registry=${protocol}` 和 `protocol=registry` 到 URL
                         url = URLBuilder.from(url)
                                 .addParameter(Constants.REGISTRY_KEY, url.getProtocol())
                                 .setProtocol(Constants.REGISTRY_PROTOCOL)
                                 .build();
-                        if ((provider && url.getParameter(Constants.REGISTER_KEY, true))
-                                || (!provider && url.getParameter(Constants.SUBSCRIBE_KEY, true))) {
+                        if ((provider && url.getParameter(Constants.REGISTER_KEY, true)) // 服务提供者 && 注册  若是服务提供者，判断是否只订阅不注册。如果是，不添加结果到 registryList 中。
+                                || (!provider && url.getParameter(Constants.SUBSCRIBE_KEY, true))) { // 服务消费者 && 订阅  若是服务消费者，判断是否只注册不订阅。如果是，不添加到结果 registryList
                             registryList.add(url);
                         }
                     }
@@ -329,6 +335,7 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
     /**
      *
      * Load the monitor config from the system properties and conversation it to {@link URL}
+     * 加载监控中心 URL
      *
      * @param registryURL
      * @return

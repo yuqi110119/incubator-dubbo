@@ -16,6 +16,9 @@
  */
 package org.apache.dubbo.remoting.zookeeper;
 
+/**
+ * 状态监听器接口
+ */
 public interface StateListener {
 
     int DISCONNECTED = 0;
@@ -24,6 +27,10 @@ public interface StateListener {
 
     int RECONNECTED = 2;
 
+    /**
+     * 状态变更回调
+     * @param connected  状态
+     */
     void stateChanged(int connected);
 
 }

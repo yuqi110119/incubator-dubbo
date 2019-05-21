@@ -31,11 +31,29 @@ import java.util.concurrent.ConcurrentMap;
 
 /**
  * @date 2017/11/23
+ * 服务提供者和消费者注册表，存储 JVM 进程内自己的服务提供者和消费者的 Invoker 。
  */
 public class ProviderConsumerRegTable {
+    /**
+     * 服务提供者 Invoker 集合
+     *
+     * key：服务提供者 URL 服务键
+     */
     public static ConcurrentHashMap<String, ConcurrentMap<Invoker, ProviderInvokerWrapper>> providerInvokers = new ConcurrentHashMap<>();
+    /**
+     * 服务消费者 Invoker 集合
+     *
+     * key：服务消费者 URL 服务键
+     */
     public static ConcurrentHashMap<String, Set<ConsumerInvokerWrapper>> consumerInvokers = new ConcurrentHashMap<>();
 
+    /**
+     * 注册 Provider Invoker
+     *
+     * @param invoker invoker 对象
+     * @param registryUrl 注册中心 URL
+     * @param providerUrl 服务提供者 URL
+     */
     public static <T> ProviderInvokerWrapper<T> registerProvider(Invoker<T> invoker, URL registryUrl, URL providerUrl) {
         ProviderInvokerWrapper<T> wrapperInvoker = new ProviderInvokerWrapper<>(invoker, registryUrl, providerUrl);
         String serviceUniqueName = providerUrl.getServiceKey();
@@ -57,6 +75,12 @@ public class ProviderConsumerRegTable {
         return invokers.remove(new ProviderIndvokerWrapper(invoker, null, null));
     }*/
 
+    /**
+     * 获得指定服务键的 Provider Invoker 集合
+     *
+     * @param serviceUniqueName 服务键
+     * @return 集合
+     */
     public static Set<ProviderInvokerWrapper> getProviderInvoker(String serviceUniqueName) {
         ConcurrentMap<Invoker, ProviderInvokerWrapper> invokers = providerInvokers.get(serviceUniqueName);
         if (invokers == null) {
@@ -65,6 +89,12 @@ public class ProviderConsumerRegTable {
         return new HashSet<>(invokers.values());
     }
 
+    /**
+     * 获得服务提供者对应的 Invoker Wrapper 对象
+     *
+     * @param invoker 服务提供者 Invoker
+     * @return Invoker Wrapper 对象
+     */
     public static <T> ProviderInvokerWrapper<T> getProviderWrapper(URL registeredProviderUrl, Invoker<T> invoker) {
         String serviceUniqueName = registeredProviderUrl.getServiceKey();
         ConcurrentMap<Invoker, ProviderInvokerWrapper> invokers = providerInvokers.get(serviceUniqueName);
@@ -81,6 +111,14 @@ public class ProviderConsumerRegTable {
         return null;
     }
 
+    /**
+     * 注册 Consumer Invoker
+     *
+     * @param invoker invoker 对象
+     * @param registryUrl 注册中心 URL
+     * @param consumerUrl 服务消费者 URL
+     * @param registryDirectory 注册中心 Directory
+     */
     public static void registerConsumer(Invoker invoker, URL registryUrl, URL consumerUrl, RegistryDirectory registryDirectory) {
         ConsumerInvokerWrapper wrapperInvoker = new ConsumerInvokerWrapper(invoker, registryUrl, consumerUrl, registryDirectory);
         String serviceUniqueName = consumerUrl.getServiceKey();
@@ -92,6 +130,12 @@ public class ProviderConsumerRegTable {
         invokers.add(wrapperInvoker);
     }
 
+    /**
+     * 获得指定服务键的 Consumer Invoker 集合
+     *
+     * @param serviceUniqueName 服务键
+     * @return 集合
+     */
     public static Set<ConsumerInvokerWrapper> getConsumerInvoker(String serviceUniqueName) {
         Set<ConsumerInvokerWrapper> invokers = consumerInvokers.get(serviceUniqueName);
         return invokers == null ? Collections.emptySet() : invokers;
